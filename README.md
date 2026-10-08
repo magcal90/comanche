@@ -70,6 +70,19 @@ mvn clean verify
 docker compose config
 ```
 
+## IoT gateway ingestion
+
+The gateway is disabled by default so a normal build does not require running brokers. To run the
+MQTT-to-Kafka ingestion path locally, start the Compose infrastructure and export the gateway values
+shown in `.env.example`. `COMANCHE_REGISTERED_DEVICE_IDS` is the milestone's local configuration-backed
+device registry; an empty value rejects every device. The production `DeviceRegistryPort` adapter is
+reserved for the approved read-only Operations Service API contract.
+
+The gateway uses MQTT 3.1.1 QoS 1, a persistent session, and manual acknowledgement after Kafka broker
+acknowledgement. Its client ID must remain stable and unique per concurrently running gateway instance.
+MQTT credentials are resolved at the integration boundary and must not be committed in application
+configuration.
+
 ## M1 security and design boundaries
 
 - Kafka uses plaintext listeners without authentication, as SPEC-006 permits for an isolated local environment. Secured Kafka integration testing and service-specific permissions are deferred by the specification.

@@ -1,3 +1,35 @@
 spring:
   application:
     name: comanche-iot-gateway
+  kafka:
+    bootstrap-servers: ${COMANCHE_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    producer:
+      acks: all
+      retries: 5
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        retry.backoff.ms: 100
+        retry.backoff.max.ms: 2000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 15000
+        max.block.ms: 5000
+
+comanche:
+  gateway:
+    mqtt:
+      enabled: ${COMANCHE_GATEWAY_MQTT_ENABLED:false}
+      server-uri: ${COMANCHE_MQTT_SERVER_URI:tcp://localhost:1883}
+      client-id: ${COMANCHE_GATEWAY_MQTT_CLIENT_ID:comanche-iot-gateway-local-1}
+      username: ${COMANCHE_GATEWAY_MQTT_USERNAME:}
+      password: ${COMANCHE_GATEWAY_MQTT_PASSWORD:}
+      connection-timeout: 10s
+      keep-alive-interval: 30s
+      max-reconnect-delay: 30s
+      completion-timeout: 10s
+    ingestion:
+      registered-device-ids: ${COMANCHE_REGISTERED_DEVICE_IDS:}
+      max-message-size: 256KB
+      kafka-ack-timeout: 10s
