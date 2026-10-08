@@ -1,0 +1,3 @@
+# M1 permits every authenticated local-development identity to use the device
+# namespace. Fine-grained gateway/device ACLs belong to later security work.
+pattern readwrite comanche/devices/#

@@ -1,0 +1,19 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+target/
+**/target/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+
+# Mosquitto credentials and persistent data
+infrastructure/mosquitto/data/
