@@ -31,3 +31,20 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Maven
+target/
+**/target/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
