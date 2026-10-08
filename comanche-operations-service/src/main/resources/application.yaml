@@ -1,3 +1,42 @@
 spring:
   application:
     name: comanche-operations-service
+  datasource:
+    url: ${COMANCHE_POSTGRES_URL:jdbc:postgresql://localhost:5432/comanche}
+    username: ${COMANCHE_POSTGRES_USER:comanche}
+    password: ${COMANCHE_POSTGRES_PASSWORD:comanche-local}
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${COMANCHE_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    consumer:
+      group-id: comanche-ops-service
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 10000
+        request.timeout.ms: 5000
+    listener:
+      ack-mode: record
+      observation-enabled: true
+
+comanche:
+  operations:
+    kafka:
+      retry:
+        max-attempts: 3
+        initial-backoff: 250ms
+        multiplier: 2.0
+        max-backoff: 2s
+        dead-letter-publish-timeout: 10s

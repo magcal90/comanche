@@ -25,5 +25,8 @@ create_topic comanche.alert.events.v1 604800000
 create_topic comanche.incident.events.v1 604800000
 create_topic comanche.command.requests.v1 604800000
 create_topic comanche.command.results.v1 604800000
+create_topic comanche.device.telemetry.dlt.v1 604800000
+create_topic comanche.device.status.dlt.v1 604800000
+create_topic comanche.device.events.dlt.v1 604800000
 
 /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$bootstrap_server" --list
