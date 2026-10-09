@@ -1,0 +1,41 @@
+package io.github.magcal90.comanche_device_simulator.config;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.stream.IntStream;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+
+public final class SimulatorConfigurationLoader {
+    private SimulatorConfigurationLoader() {}
+
+    public static SimulatorConfiguration load() {
+        return from(ConfigFactory.load().getConfig("comanche.simulator"));
+    }
+
+    static SimulatorConfiguration from(Config config) {
+        int kioskCount = config.getInt("kiosk-count");
+        if (kioskCount <= 0) throw new IllegalArgumentException("kiosk-count must be positive");
+        String prefix = required(config.getString("device-id-prefix"), "device-id-prefix");
+        String siteId = required(config.getString("site-id"), "site-id");
+        int first = config.getInt("first-device-number");
+        List<KioskConfiguration> kiosks = IntStream.range(0, kioskCount)
+                .mapToObj(index -> new KioskConfiguration(prefix + "%03d".formatted(first + index), siteId))
+                .toList();
+        return new SimulatorConfiguration(
+                config.getLong("random-seed"),
+                Instant.parse(config.getString("start-time")),
+                config.getDuration("tick-interval"),
+                config.getInt("telemetry-interval-ticks"),
+                config.getInt("status-interval-ticks"),
+                config.getInt("publisher-buffer-capacity"),
+                config.getInt("publication-max-attempts"),
+                kiosks);
+    }
+
+    private static String required(String value, String name) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(name + " must not be blank");
+        return value;
+    }
+}
