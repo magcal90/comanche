@@ -43,17 +43,13 @@ class OperationsIngestionIT {
 
 	private static final String DEVICE_ID = "KIOSK-TAM-003";
 
+	@SuppressWarnings("resource")
 	@Container
 	static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"))
 			.withDatabaseName("comanche").withUsername("comanche").withPassword("test");
 
 	@Container
 	static final KafkaContainer KAFKA = new KafkaContainer(DockerImageName.parse("apache/kafka-native:4.0.0"));
-
-	static {
-		POSTGRES.start();
-		KAFKA.start();
-	}
 
 	@DynamicPropertySource
 	static void properties(DynamicPropertyRegistry registry) {

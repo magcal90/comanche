@@ -14,11 +14,17 @@ public record SimulatorConfiguration(
         int statusIntervalTicks,
         int publisherBufferCapacity,
         int publicationMaxAttempts,
+        Duration publicationInitialBackoff,
+        Duration publicationMaxBackoff,
+        MqttConfiguration mqtt,
         List<KioskConfiguration> kiosks) {
 
     public SimulatorConfiguration {
         Objects.requireNonNull(startTime, "startTime");
         Objects.requireNonNull(tickInterval, "tickInterval");
+        Objects.requireNonNull(publicationInitialBackoff, "publicationInitialBackoff");
+        Objects.requireNonNull(publicationMaxBackoff, "publicationMaxBackoff");
+        Objects.requireNonNull(mqtt, "mqtt");
         kiosks = List.copyOf(Objects.requireNonNull(kiosks, "kiosks"));
         if (tickInterval.isZero() || tickInterval.isNegative()) {
             throw new IllegalArgumentException("tickInterval must be positive");
@@ -27,6 +33,12 @@ public record SimulatorConfiguration(
         requirePositive(statusIntervalTicks, "statusIntervalTicks");
         requirePositive(publisherBufferCapacity, "publisherBufferCapacity");
         requirePositive(publicationMaxAttempts, "publicationMaxAttempts");
+        if (publicationInitialBackoff.isNegative() || publicationInitialBackoff.isZero()) {
+            throw new IllegalArgumentException("publicationInitialBackoff must be positive");
+        }
+        if (publicationMaxBackoff.compareTo(publicationInitialBackoff) < 0) {
+            throw new IllegalArgumentException("publicationMaxBackoff must be at least publicationInitialBackoff");
+        }
         if (kiosks.isEmpty()) throw new IllegalArgumentException("at least one kiosk is required");
         var ids = new HashSet<String>();
         kiosks.forEach(kiosk -> {

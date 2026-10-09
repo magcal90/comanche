@@ -60,6 +60,7 @@ class GatewayMqttKafkaIT {
 	@Container
 	static final KafkaContainer KAFKA = new KafkaContainer(DockerImageName.parse("apache/kafka-native:4.1.0"));
 
+	@SuppressWarnings("resource")
 	@Container
 	static final GenericContainer<?> MQTT = new GenericContainer<>(DockerImageName.parse("eclipse-mosquitto:2.0.22"))
 			.withCopyFileToContainer(MountableFile.forClasspathResource("mosquitto-it.conf"),

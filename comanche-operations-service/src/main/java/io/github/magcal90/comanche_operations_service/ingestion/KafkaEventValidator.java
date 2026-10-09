@@ -73,9 +73,9 @@ final class KafkaEventValidator {
 
 	private static String requiredText(JsonNode node, String field) {
 		JsonNode value = node.get(field);
-		if (value == null || !value.isTextual() || value.asText().isBlank())
+		if (value == null || !value.isString() || value.asString().isBlank())
 			throw new InvalidEventException("Missing or invalid " + field);
-		return value.asText();
+		return value.asString();
 	}
 
 	private static Instant instant(JsonNode root, String field) {

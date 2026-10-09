@@ -2,10 +2,12 @@ package io.github.magcal90.comanche_device_simulator.actor;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.net.URI;
 import java.util.ArrayDeque;
 import java.util.List;
 
 import io.github.magcal90.comanche_device_simulator.config.KioskConfiguration;
+import io.github.magcal90.comanche_device_simulator.config.MqttConfiguration;
 import io.github.magcal90.comanche_device_simulator.config.SimulatorConfiguration;
 import io.github.magcal90.comanche_device_simulator.identity.MessageIdGenerator;
 import io.github.magcal90.comanche_device_simulator.model.DeviceSnapshot;
@@ -64,7 +66,7 @@ class DeviceFarmSupervisorTest {
     }
 
     @Test
-    void publish_whenAttemptsFail_shouldPreserveLogicalIdentityAcrossRetries() {
+    void publish_whenPublisherRejectsEvent_shouldLeaveStateIntactAndReportFailure() {
         var publisher = new FakeMqttPublisher();
         publisher.failPublications();
         var supervisor = TEST_KIT.spawn(DeviceFarmSupervisor.create(configuration(1, 10, 10, 3),
@@ -74,11 +76,11 @@ class DeviceFarmSupervisorTest {
         supervisor.tell(new SupervisorCommand.TickAll());
 
         TEST_KIT.<String>createTestProbe().awaitAssert(() -> {
-            assertThat(publisher.requests()).hasSize(3);
-            assertThat(publisher.requests()).extracting(request -> request.messageId()).containsOnly("hardcoded-event");
-            assertThat(publisher.requests()).extracting(request -> request.attempt()).containsExactly(1, 2, 3);
+            assertThat(publisher.requests()).singleElement()
+                    .extracting(request -> request.messageId()).isEqualTo("hardcoded-event");
             return null;
         });
+        assertThat(snapshot(device(supervisor, "KIOSK-001")).state().tick()).isEqualTo(1);
     }
 
     private static SimulatorConfiguration configuration(int count, int telemetryTicks, int statusTicks, int attempts) {
@@ -86,7 +88,9 @@ class DeviceFarmSupervisorTest {
                 .mapToObj(index -> new KioskConfiguration("KIOSK-%03d".formatted(index), "SITE-1"))
                 .toList();
         return new SimulatorConfiguration(42, START, Duration.ofSeconds(1), telemetryTicks, statusTicks,
-                10, attempts, kiosks);
+                10, attempts, Duration.ofMillis(1), Duration.ofMillis(5),
+                new MqttConfiguration(URI.create("tcp://localhost:1883"), Duration.ofSeconds(1), Duration.ofSeconds(5)),
+                kiosks);
     }
 
     private static org.apache.pekko.actor.typed.ActorRef<KioskCommand> device(

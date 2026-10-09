@@ -25,7 +25,6 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
     private final ActorRef<SupervisorCommand> supervisor;
     private final int telemetryIntervalTicks;
     private final int statusIntervalTicks;
-    private final int publicationMaxAttempts;
     private KioskState state;
 
     private KioskActor(
@@ -37,8 +36,7 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
             MessageIdGenerator ids,
             ActorRef<SupervisorCommand> supervisor,
             int telemetryIntervalTicks,
-            int statusIntervalTicks,
-            int publicationMaxAttempts) {
+            int statusIntervalTicks) {
         super(context);
         this.clock = clock;
         this.publisher = publisher;
@@ -46,7 +44,6 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
         this.supervisor = supervisor;
         this.telemetryIntervalTicks = telemetryIntervalTicks;
         this.statusIntervalTicks = statusIntervalTicks;
-        this.publicationMaxAttempts = publicationMaxAttempts;
         this.state = KioskSimulation.initial(config.deviceId(), config.siteId(), seed, clock);
     }
 
@@ -58,10 +55,9 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
             MessageIdGenerator ids,
             ActorRef<SupervisorCommand> supervisor,
             int telemetryIntervalTicks,
-            int statusIntervalTicks,
-            int publicationMaxAttempts) {
+            int statusIntervalTicks) {
         return Behaviors.setup(context -> new KioskActor(context, config, seed, clock, publisher, ids,
-                supervisor, telemetryIntervalTicks, statusIntervalTicks, publicationMaxAttempts));
+                supervisor, telemetryIntervalTicks, statusIntervalTicks));
     }
 
     @Override
@@ -114,13 +110,8 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
     }
 
     private Behavior<KioskCommand> onPublishFailed(KioskCommand.PublishFailed failure) {
-        if (failure.request().attempt() < publicationMaxAttempts) {
-            submit(failure.request().nextAttempt());
-        }
-        else {
-            supervisor.tell(new SupervisorCommand.PublicationExhausted(
-                    state.deviceId(), failure.request().messageId(), failure.cause()));
-        }
+        supervisor.tell(new SupervisorCommand.PublicationExhausted(
+                state.deviceId(), failure.request().messageId(), failure.cause()));
         return this;
     }
 }

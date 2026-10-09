@@ -1,5 +1,6 @@
 package io.github.magcal90.comanche_device_simulator.config;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -31,6 +32,12 @@ public final class SimulatorConfigurationLoader {
                 config.getInt("status-interval-ticks"),
                 config.getInt("publisher-buffer-capacity"),
                 config.getInt("publication-max-attempts"),
+                config.getDuration("publication-initial-backoff"),
+                config.getDuration("publication-max-backoff"),
+                new MqttConfiguration(
+                        URI.create(config.getString("mqtt.server-uri")),
+                        config.getDuration("mqtt.connection-timeout"),
+                        config.getDuration("mqtt.keep-alive-interval")),
                 kiosks);
     }
 

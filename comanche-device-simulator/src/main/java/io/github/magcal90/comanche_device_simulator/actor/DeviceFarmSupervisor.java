@@ -1,6 +1,5 @@
 package io.github.magcal90.comanche_device_simulator.actor;
 
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -29,7 +28,7 @@ public final class DeviceFarmSupervisor {
                 Behavior<KioskCommand> behavior = KioskActor.create(kiosk,
                         SeedDeriver.forDevice(configuration.randomSeed(), kiosk.deviceId()), clock,
                         publisher, ids, context.getSelf(), configuration.telemetryIntervalTicks(),
-                        configuration.statusIntervalTicks(), configuration.publicationMaxAttempts());
+                        configuration.statusIntervalTicks());
                 ActorRef<KioskCommand> ref = context.spawn(
                         Behaviors.supervise(behavior).onFailure(SupervisorStrategy.stop()), kiosk.deviceId());
                 devices.put(kiosk.deviceId(), ref);

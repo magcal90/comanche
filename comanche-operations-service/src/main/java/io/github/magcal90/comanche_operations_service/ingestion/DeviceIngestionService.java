@@ -1,6 +1,5 @@
 package io.github.magcal90.comanche_operations_service.ingestion;
 
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -110,7 +109,7 @@ public class DeviceIngestionService {
 				.param("deviceId", event.deviceId()).param("name", name)
 				.param("valueType", numeric ? "NUMBER" : "TEXT")
 				.param("numericValue", numeric ? value.decimalValue() : null, Types.NUMERIC)
-				.param("textValue", numeric ? null : value.asText(), Types.VARCHAR)
+				.param("textValue", numeric ? null : value.asString(), Types.VARCHAR)
 				.param("observedAt", dbTime(event.occurredAt())).param("eventId", event.eventId())
 				.param("updatedAt", dbTime(receivedAt)).update();
 	}
@@ -136,7 +135,7 @@ public class DeviceIngestionService {
 	}
 
 	private void persistDeviceEvent(ValidatedDeviceEvent event, Instant receivedAt) {
-		String deviceEventType = event.payload().get("eventType").asText();
+		String deviceEventType = event.payload().get("eventType").asString();
 		jdbc.sql("""
 				INSERT INTO device_event_observation(event_id, device_id, source_message_id, device_event_type,
 				 occurred_at, published_at, operations_received_at, attributes)
@@ -147,9 +146,9 @@ public class DeviceIngestionService {
 				.param("occurredAt", dbTime(event.occurredAt())).param("publishedAt", dbTime(event.publishedAt()))
 				.param("receivedAt", dbTime(receivedAt)).param("attributes", json(event.payload())).update();
 		if ("OPERATIONAL_STATE_CHANGED".equals(deviceEventType)) {
-			String previous = event.payload().path("previousState").isTextual()
-					? event.payload().path("previousState").asText() : null;
-			String next = event.payload().get("newState").asText();
+			String previous = event.payload().path("previousState").isString()
+					? event.payload().path("previousState").asString() : null;
+			String next = event.payload().get("newState").asString();
 			jdbc.sql("""
 					INSERT INTO device_operational_state_history(source_event_id, device_id, previous_state,
 					 new_state, effective_at, operations_received_at)
