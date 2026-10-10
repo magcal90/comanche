@@ -17,7 +17,8 @@ public record SimulatorConfiguration(
         Duration publicationInitialBackoff,
         Duration publicationMaxBackoff,
         MqttConfiguration mqtt,
-        List<KioskConfiguration> kiosks) {
+        List<KioskConfiguration> kiosks,
+        List<FaultScenarioConfiguration> faultScenarios) {
 
     public SimulatorConfiguration {
         Objects.requireNonNull(startTime, "startTime");
@@ -26,6 +27,7 @@ public record SimulatorConfiguration(
         Objects.requireNonNull(publicationMaxBackoff, "publicationMaxBackoff");
         Objects.requireNonNull(mqtt, "mqtt");
         kiosks = List.copyOf(Objects.requireNonNull(kiosks, "kiosks"));
+        faultScenarios = List.copyOf(Objects.requireNonNull(faultScenarios, "faultScenarios"));
         if (tickInterval.isZero() || tickInterval.isNegative()) {
             throw new IllegalArgumentException("tickInterval must be positive");
         }
@@ -43,6 +45,20 @@ public record SimulatorConfiguration(
         var ids = new HashSet<String>();
         kiosks.forEach(kiosk -> {
             if (!ids.add(kiosk.deviceId())) throw new IllegalArgumentException("duplicate deviceId: " + kiosk.deviceId());
+        });
+        var scenarioIds = new HashSet<String>();
+        var deviceFaults = new HashSet<String>();
+        faultScenarios.forEach(scenario -> {
+            if (!scenarioIds.add(scenario.scenarioId())) {
+                throw new IllegalArgumentException("duplicate scenarioId: " + scenario.scenarioId());
+            }
+            if (!ids.contains(scenario.deviceId())) {
+                throw new IllegalArgumentException("fault scenario targets unknown deviceId: " + scenario.deviceId());
+            }
+            if (!deviceFaults.add(scenario.deviceId() + ':' + scenario.faultType())) {
+                throw new IllegalArgumentException("duplicate fault type for device: " + scenario.deviceId()
+                        + " " + scenario.faultType());
+            }
         });
     }
 

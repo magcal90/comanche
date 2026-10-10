@@ -13,10 +13,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
+import io.github.magcal90.comanche_device_simulator.actor.DeviceFarmSupervisor;
+import io.github.magcal90.comanche_device_simulator.actor.SupervisorCommand;
+import io.github.magcal90.comanche_device_simulator.config.FaultScenarioConfiguration;
 import io.github.magcal90.comanche_device_simulator.config.KioskConfiguration;
 import io.github.magcal90.comanche_device_simulator.config.MqttConfiguration;
 import io.github.magcal90.comanche_device_simulator.config.MqttCredentials;
+import io.github.magcal90.comanche_device_simulator.config.SimulatorConfiguration;
 import io.github.magcal90.comanche_device_simulator.identity.MessageIdGenerator;
+import io.github.magcal90.comanche_device_simulator.model.FaultType;
+import io.github.magcal90.comanche_device_simulator.simulation.FixedStepSimulationClock;
+import org.apache.pekko.actor.typed.ActorSystem;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -131,6 +138,67 @@ class PahoMqttPublisherIT {
         }
     }
 
+    @Test
+    void faultProgression_shouldPublishGatewayValidTelemetryAndExistingPrinterEvents() throws Exception {
+        String broker = "tcp://" + MQTT.getHost() + ':' + MQTT.getMappedPort(1883);
+        List<Received> received = new CopyOnWriteArrayList<>();
+        MqttClient subscriber = subscriber(broker, "simulator-fault-it-subscriber", received);
+        ActorSystem<SupervisorCommand> system = null;
+        try {
+            subscriber.subscribe("comanche/devices/" + DEVICE_ID + "/#", 1);
+            var mapper = new ObjectMapper();
+            var serializer = new MqttEnvelopeSerializer(mapper);
+            AtomicInteger sequence = new AtomicInteger();
+            MessageIdGenerator ids = deviceId -> deviceId + "-fault-it-" + sequence.incrementAndGet();
+            var mqttConfig = new MqttConfiguration(URI.create(broker), Duration.ofSeconds(3), Duration.ofSeconds(5));
+            var kiosk = new KioskConfiguration(DEVICE_ID, "SITE-IT");
+            var scenario = new FaultScenarioConfiguration("PRINTER-IT", DEVICE_ID,
+                    FaultType.PRINTER_OVERHEATING, 1, 8, 82, 10, 60, 0.05, 0.25, 0.08);
+            var simulator = new SimulatorConfiguration(42, Instant.parse("2026-10-08T04:00:00Z"),
+                    Duration.ofSeconds(1), 1, 30, 20, 3, Duration.ofMillis(20), Duration.ofMillis(100),
+                    mqttConfig, List.of(kiosk), List.of(scenario));
+            var transport = new PahoMqttTransport(mqttConfig, MqttCredentials.of(USERNAME, PASSWORD.toCharArray()),
+                    List.of(kiosk), serializer, ids, Clock.fixed(Instant.parse("2026-10-08T04:00:00Z"), ZoneOffset.UTC));
+            var publisher = new ReliableMqttPublisher(transport, serializer, 20, 3,
+                    Duration.ofMillis(20), Duration.ofMillis(100));
+            system = ActorSystem.create(DeviceFarmSupervisor.create(simulator,
+                    new FixedStepSimulationClock(simulator.startTime(), simulator.tickInterval()),
+                    publisher, ids, false), "fault-mqtt-it");
+
+            for (int tick = 0; tick < 4; tick++) system.tell(new SupervisorCommand.TickAll());
+
+            Received telemetry = await(received, item -> item.topic.endsWith("/telemetry")
+                    && item.root(mapper).path("payload").path("metrics").path("printer.temperature").asDouble() >= 60);
+            JsonNode metrics = telemetry.root(mapper).path("payload").path("metrics");
+            assertThat(metrics.path("printer.errorRate").asDouble()).isBetween(0.0, 1.0);
+            assertThat(metrics.path("system.cpu.utilization").asDouble()).isBetween(0.0, 100.0);
+            assertThat(metrics.path("system.memory.utilization").asDouble()).isBetween(0.0, 100.0);
+            assertThat(telemetry.qos).isEqualTo(1);
+            assertThat(telemetry.retained).isFalse();
+
+            Received printerError = await(received, item -> "PRINTER_ERROR".equals(item.eventType(mapper)));
+            assertThat(printerError.topic).isEqualTo(MqttTopics.events(DEVICE_ID));
+            assertThat(printerError.root(mapper).path("payload").path("errorCode").asText())
+                    .isEqualTo("PRINTER_THERMAL_WARNING");
+            await(received, item -> "OPERATIONAL_STATE_CHANGED".equals(item.eventType(mapper))
+                    && "OUT_OF_SERVICE".equals(item.root(mapper).path("payload").path("newState").asText()));
+
+            system.tell(new SupervisorCommand.ClearFault(DEVICE_ID, FaultType.PRINTER_OVERHEATING));
+            for (int tick = 0; tick < 10; tick++) system.tell(new SupervisorCommand.TickAll());
+            Received recovered = await(received, item -> "PRINTER_RECOVERED".equals(item.eventType(mapper)));
+            assertThat(recovered.topic).isEqualTo(MqttTopics.events(DEVICE_ID));
+            assertThat(recovered.root(mapper).path("messageType").asText()).isEqualTo("DEVICE_EVENT");
+        }
+        finally {
+            if (system != null) {
+                system.tell(new SupervisorCommand.Stop());
+                system.getWhenTerminated().toCompletableFuture().get(10, TimeUnit.SECONDS);
+            }
+            subscriber.disconnect();
+            subscriber.close();
+        }
+    }
+
     private static PublishRequest request(String id, MessageCategory category, Map<String, Object> payload) {
         return new PublishRequest(id, DEVICE_ID, Instant.parse("2026-10-08T04:00:01Z"), category, payload, 1);
     }
@@ -181,6 +249,9 @@ class PahoMqttPublisherIT {
         String messageId(ObjectMapper mapper) { return root(mapper).path("messageId").asText(); }
         String connectionStatus(ObjectMapper mapper) {
             return root(mapper).path("payload").path("connectionStatus").asText();
+        }
+        String eventType(ObjectMapper mapper) {
+            return root(mapper).path("payload").path("eventType").asText();
         }
     }
 }

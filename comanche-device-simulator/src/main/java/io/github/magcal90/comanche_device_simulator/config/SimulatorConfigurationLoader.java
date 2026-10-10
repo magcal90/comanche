@@ -7,6 +7,7 @@ import java.util.stream.IntStream;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import io.github.magcal90.comanche_device_simulator.model.FaultType;
 
 public final class SimulatorConfigurationLoader {
     private SimulatorConfigurationLoader() {}
@@ -38,7 +39,35 @@ public final class SimulatorConfigurationLoader {
                         URI.create(config.getString("mqtt.server-uri")),
                         config.getDuration("mqtt.connection-timeout"),
                         config.getDuration("mqtt.keep-alive-interval")),
-                kiosks);
+                kiosks,
+                config.getConfigList("fault-scenarios").stream().map(SimulatorConfigurationLoader::faultScenario).toList());
+    }
+
+    private static FaultScenarioConfiguration faultScenario(Config config) {
+        FaultType type;
+        try {
+            type = FaultType.valueOf(required(config.getString("fault-type"), "fault-type"));
+        }
+        catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid fault-type: " + config.getString("fault-type"), exception);
+        }
+        double secondaryStep = optionalDouble(config, "secondary-step-per-tick");
+        double secondaryMaximum = optionalDouble(config, "secondary-maximum");
+        double secondaryRecovery = optionalDouble(config, "secondary-recovery-step-per-tick");
+        return new FaultScenarioConfiguration(
+                required(config.getString("scenario-id"), "scenario-id"),
+                required(config.getString("device-id"), "device-id"),
+                type,
+                config.getLong("start-after-ticks"),
+                config.getDouble("step-per-tick"),
+                config.getDouble("maximum"),
+                config.getDouble("recovery-step-per-tick"),
+                config.getDouble("disabling-threshold"),
+                secondaryStep, secondaryMaximum, secondaryRecovery);
+    }
+
+    private static double optionalDouble(Config config, String path) {
+        return config.hasPath(path) ? config.getDouble(path) : 0;
     }
 
     private static String required(String value, String name) {

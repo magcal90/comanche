@@ -15,4 +15,8 @@ public final class MqttTopics {
     public static String status(String deviceId) {
         return forCategory(deviceId, MessageCategory.STATUS);
     }
+
+    public static String events(String deviceId) {
+        return forCategory(deviceId, MessageCategory.DEVICE_EVENT);
+    }
 }

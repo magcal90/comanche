@@ -1,11 +1,19 @@
 package io.github.magcal90.comanche_device_simulator.actor;
 
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+import io.github.magcal90.comanche_device_simulator.config.FaultScenarioConfiguration;
 import io.github.magcal90.comanche_device_simulator.config.KioskConfiguration;
 import io.github.magcal90.comanche_device_simulator.identity.MessageIdGenerator;
 import io.github.magcal90.comanche_device_simulator.model.DeviceSnapshot;
+import io.github.magcal90.comanche_device_simulator.model.FaultProfile;
+import io.github.magcal90.comanche_device_simulator.model.FaultType;
 import io.github.magcal90.comanche_device_simulator.model.KioskState;
+import io.github.magcal90.comanche_device_simulator.model.PrinterStatus;
 import io.github.magcal90.comanche_device_simulator.mqtt.MessageCategory;
 import io.github.magcal90.comanche_device_simulator.mqtt.MqttPublisher;
 import io.github.magcal90.comanche_device_simulator.mqtt.PublishRequest;
@@ -25,6 +33,9 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
     private final ActorRef<SupervisorCommand> supervisor;
     private final int telemetryIntervalTicks;
     private final int statusIntervalTicks;
+    private final List<FaultScenarioConfiguration> scenarios;
+    private final Map<FaultType, FaultProfile> faultProfiles;
+    private final Set<String> startedScenarios = new HashSet<>();
     private KioskState state;
 
     private KioskActor(
@@ -36,7 +47,8 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
             MessageIdGenerator ids,
             ActorRef<SupervisorCommand> supervisor,
             int telemetryIntervalTicks,
-            int statusIntervalTicks) {
+            int statusIntervalTicks,
+            List<FaultScenarioConfiguration> scenarios) {
         super(context);
         this.clock = clock;
         this.publisher = publisher;
@@ -44,6 +56,9 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
         this.supervisor = supervisor;
         this.telemetryIntervalTicks = telemetryIntervalTicks;
         this.statusIntervalTicks = statusIntervalTicks;
+        this.scenarios = List.copyOf(scenarios);
+        this.faultProfiles = scenarios.stream().collect(Collectors.toUnmodifiableMap(
+                FaultScenarioConfiguration::faultType, FaultScenarioConfiguration::profile));
         this.state = KioskSimulation.initial(config.deviceId(), config.siteId(), seed, clock);
     }
 
@@ -55,15 +70,18 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
             MessageIdGenerator ids,
             ActorRef<SupervisorCommand> supervisor,
             int telemetryIntervalTicks,
-            int statusIntervalTicks) {
+            int statusIntervalTicks,
+            List<FaultScenarioConfiguration> scenarios) {
         return Behaviors.setup(context -> new KioskActor(context, config, seed, clock, publisher, ids,
-                supervisor, telemetryIntervalTicks, statusIntervalTicks));
+                supervisor, telemetryIntervalTicks, statusIntervalTicks, scenarios));
     }
 
     @Override
     public Receive<KioskCommand> createReceive() {
         return newReceiveBuilder()
                 .onMessage(KioskCommand.Tick.class, ignored -> onTick())
+                .onMessage(KioskCommand.InjectFault.class, this::onInjectFault)
+                .onMessage(KioskCommand.ClearFault.class, this::onClearFault)
                 .onMessage(KioskCommand.GetSnapshot.class, this::onGetSnapshot)
                 .onMessage(KioskCommand.PublishSucceeded.class, ignored -> this)
                 .onMessage(KioskCommand.PublishFailed.class, this::onPublishFailed)
@@ -71,6 +89,10 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
     }
 
     private Behavior<KioskCommand> onTick() {
+        scenarios.stream()
+                .filter(scenario -> scenario.startAfterTicks() <= state.tick() + 1)
+                .filter(scenario -> startedScenarios.add(scenario.scenarioId()))
+                .forEach(scenario -> state = KioskSimulation.injectFault(state, scenario.profile()));
         KioskState previous = state;
         state = KioskSimulation.advance(state, clock);
         if (previous.operationalState() != state.operationalState()) {
@@ -79,16 +101,48 @@ public final class KioskActor extends AbstractBehavior<KioskCommand> {
                     "previousState", previous.operationalState().name(),
                     "newState", state.operationalState().name()));
         }
+        if (previous.printerStatus() != PrinterStatus.ERROR && state.printerStatus() == PrinterStatus.ERROR) {
+            publish(MessageCategory.DEVICE_EVENT, Map.of(
+                    "eventType", "PRINTER_ERROR",
+                    "errorCode", "PRINTER_THERMAL_WARNING",
+                    "description", "Printer temperature reached the configured disabling threshold"));
+        }
+        if (previous.activeFaults().containsKey(FaultType.PRINTER_OVERHEATING)
+                && !state.activeFaults().containsKey(FaultType.PRINTER_OVERHEATING)) {
+            publish(MessageCategory.DEVICE_EVENT, Map.of(
+                    "eventType", "PRINTER_RECOVERED",
+                    "description", "Printer temperature and error rate returned to normal"));
+        }
         if (state.tick() % telemetryIntervalTicks == 0) {
             publish(MessageCategory.TELEMETRY, Map.of("metrics", Map.of(
                     "system.cpu.utilization", state.cpuUtilization(),
-                    "system.memory.utilization", state.memoryUtilization())));
+                    "system.memory.utilization", state.memoryUtilization(),
+                    "printer.temperature", state.printerTemperature(),
+                    "printer.errorRate", state.printerErrorRate(),
+                    "printer.paperLevel", state.printerPaperLevel(),
+                    "printer.status", state.printerStatus().name())));
         }
         if (state.tick() % statusIntervalTicks == 0) {
             publish(MessageCategory.STATUS, Map.of(
                     "connectionStatus", "ONLINE",
-                    "applicationStatus", "RUNNING"));
+                    "applicationStatus", "RUNNING",
+                    "printerStatus", state.printerStatus().name()));
         }
+        return this;
+    }
+
+    private Behavior<KioskCommand> onInjectFault(KioskCommand.InjectFault command) {
+        FaultProfile profile = faultProfiles.get(command.faultType());
+        if (profile == null) {
+            getContext().getLog().warn("Ignoring unconfigured fault {} for {}", command.faultType(), state.deviceId());
+            return this;
+        }
+        state = KioskSimulation.injectFault(state, profile);
+        return this;
+    }
+
+    private Behavior<KioskCommand> onClearFault(KioskCommand.ClearFault command) {
+        state = KioskSimulation.clearFault(state, command.faultType());
         return this;
     }
 

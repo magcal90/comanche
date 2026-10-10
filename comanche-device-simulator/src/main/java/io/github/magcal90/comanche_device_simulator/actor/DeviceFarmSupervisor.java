@@ -25,10 +25,13 @@ public final class DeviceFarmSupervisor {
         return Behaviors.setup(context -> {
             Map<String, ActorRef<KioskCommand>> devices = new LinkedHashMap<>();
             configuration.kiosks().forEach(kiosk -> {
+                var scenarios = configuration.faultScenarios().stream()
+                        .filter(scenario -> scenario.deviceId().equals(kiosk.deviceId()))
+                        .toList();
                 Behavior<KioskCommand> behavior = KioskActor.create(kiosk,
                         SeedDeriver.forDevice(configuration.randomSeed(), kiosk.deviceId()), clock,
                         publisher, ids, context.getSelf(), configuration.telemetryIntervalTicks(),
-                        configuration.statusIntervalTicks());
+                        configuration.statusIntervalTicks(), scenarios);
                 ActorRef<KioskCommand> ref = context.spawn(
                         Behaviors.supervise(behavior).onFailure(SupervisorStrategy.stop()), kiosk.deviceId());
                 devices.put(kiosk.deviceId(), ref);
@@ -45,6 +48,18 @@ public final class DeviceFarmSupervisor {
                     })
                     .onMessage(SupervisorCommand.GetDeviceCount.class, command -> {
                         command.replyTo().tell(devices.size());
+                        return Behaviors.same();
+                    })
+                    .onMessage(SupervisorCommand.InjectFault.class, command -> {
+                        ActorRef<KioskCommand> device = devices.get(command.deviceId());
+                        if (device == null) context.getLog().warn("Cannot inject fault into unknown device {}", command.deviceId());
+                        else device.tell(new KioskCommand.InjectFault(command.faultType()));
+                        return Behaviors.same();
+                    })
+                    .onMessage(SupervisorCommand.ClearFault.class, command -> {
+                        ActorRef<KioskCommand> device = devices.get(command.deviceId());
+                        if (device == null) context.getLog().warn("Cannot clear fault for unknown device {}", command.deviceId());
+                        else device.tell(new KioskCommand.ClearFault(command.faultType()));
                         return Behaviors.same();
                     })
                     .onMessage(SupervisorCommand.PublicationExhausted.class, failure -> {
