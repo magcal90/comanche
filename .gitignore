@@ -1,19 +1,66 @@
-# Secrets
+# Local environment and credentials
 .env
 .env.*
 !.env.example
+application-local.yml
+application-local.yaml
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
 
-# Build output
+# Maven and other generated build output
 target/
 **/target/
+!**/src/main/**/target/
+!**/src/test/**/target/
+build/
+**/build/
+!**/src/main/**/build/
+!**/src/test/**/build/
 
-# IDE
+# Generated Spring Initializr help files in application modules
+comanche-*/HELP.md
+
+# Eclipse and Spring Tool Suite
+.apt_generated/
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+
+# IntelliJ IDEA
 .idea/
+*.iws
+*.iml
+*.ipr
+
+# NetBeans
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# Visual Studio Code
 .vscode/
 
-# Logs
+# Logs and temporary files
 *.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
 
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # Mosquitto credentials and persistent data
 infrastructure/mosquitto/data/
